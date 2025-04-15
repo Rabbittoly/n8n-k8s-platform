@@ -1,0 +1,86 @@
+# Kubernetes and Helm
+.kube/
+.helm/
+kubeconfig
+
+# Secrets
+.env
+*.env
+*.key
+*.pem
+secrets/
+sensitive/
+
+# Backup files
+backups/
+*.sql
+*.sql.gz
+*.backup
+*.bak
+
+# Generated files
+values.yaml
+# Keep example files in version control
+!values.example.yaml
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+tmp/
+
+# Node.js dependencies (useful if you have client-side tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (if you have Python tools)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+ENV/
+
+# Test results
+test-results/
+coverage/
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Helm
+charts/
+charts.lock
+charts.lock.yaml

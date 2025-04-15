@@ -1,0 +1,46 @@
+# Kustomization for n8n Platform
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: n8n
+
+resources:
+  - k8s/cert-manager/cluster-issuer.yaml
+  - k8s/ingress/traefik.yaml
+
+# Generators for secrets
+secretGenerator:
+  - name: n8n-secrets
+    literals:
+      # These are examples and will be overwritten by the create-secrets.sh script
+      - encryptionKey=CHANGE-ME-WITH-A-SECURE-RANDOM-STRING
+      - webhookUrl=https://n8n.example.com/
+      - initialPassword=CHANGE-ME-WITH-SECURE-PASSWORD
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/name: n8n
+        app.kubernetes.io/part-of: n8n-platform
+
+# Patch Network Policy to allow metrics scraping
+patches:
+  - target:
+      kind: NetworkPolicy
+      name: n8n
+    patch: |-
+      - op: add
+        path: /spec/ingress/-
+        value:
+          from:
+            - namespaceSelector:
+                matchLabels:
+                  name: monitoring
+
+# Configure labels for all resources
+commonLabels:
+  app.kubernetes.io/part-of: n8n-platform
+  app.kubernetes.io/managed-by: kustomize
+
+# Configure annotations for all resources
+commonAnnotations:
+  app.kubernetes.io/version: "1.0.0"

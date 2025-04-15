@@ -1,0 +1,209 @@
+name: n8n Platform CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'helm/**'
+      - 'k8s/**'
+      - 'scripts/**'
+      - 'kustomization.yaml'
+      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'helm/**'
+      - 'k8s/**'
+      - 'scripts/**'
+      - 'kustomization.yaml'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to target environment'
+        required: false
+        type: boolean
+        default: false
+      environment:
+        description: 'Target environment'
+        required: false
+        type: choice
+        options:
+          - staging
+          - production
+        default: 'staging'
+
+env:
+  HELM_VERSION: v3.11.1
+  KUBECTL_VERSION: v1.26.0
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      
+      - name: Add Helm repos
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add n8n https://n8n-io.github.io/n8n-helm
+          helm repo add traefik https://helm.traefik.io/traefik
+          helm repo update
+      
+      - name: Lint n8n values
+        run: |
+          cp helm/n8n/values.example.yaml helm/n8n/values.yaml
+          helm lint --values helm/n8n/values.yaml n8n/n8n
+      
+      - name: Lint PostgreSQL values
+        run: |
+          helm lint --values helm/postgresql/values.yaml bitnami/postgresql
+      
+      - name: Lint Redis values
+        run: |
+          helm lint --values helm/redis/values.yaml bitnami/redis
+      
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl kustomize --load-restrictor=LoadRestrictionsNone ./ > /tmp/all.yaml
+          kubectl apply --validate=true --dry-run=client -f /tmp/all.yaml
+      
+      - name: Validate shell scripts
+        run: |
+          find ./scripts -type f -name "*.sh" -exec bash -n {} \;
+          chmod +x ./scripts/*.sh
+
+  dry-run:
+    name: Helm Dry Run
+    needs: validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: Add Helm repos
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add n8n https://n8n-io.github.io/n8n-helm
+          helm repo add traefik https://helm.traefik.io/traefik
+          helm repo update
+      
+      - name: Dry run n8n installation
+        run: |
+          cp helm/n8n/values.example.yaml helm/n8n/values.yaml
+          helm template n8n n8n/n8n --namespace n8n --values helm/n8n/values.yaml > /tmp/n8n.yaml
+      
+      - name: Dry run PostgreSQL installation
+        run: |
+          helm template postgresql bitnami/postgresql --namespace n8n --values helm/postgresql/values.yaml > /tmp/postgresql.yaml
+      
+      - name: Dry run Redis installation
+        run: |
+          helm template redis bitnami/redis --namespace n8n --values helm/redis/values.yaml > /tmp/redis.yaml
+
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment || 'staging' }}
+    needs: [validate, dry-run]
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy == 'true' && github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+      
+      - name: Add Helm repos
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add n8n https://n8n-io.github.io/n8n-helm
+          helm repo add traefik https://helm.traefik.io/traefik
+          helm repo update
+      
+      - name: Update domain in configuration
+        run: |
+          cp helm/n8n/values.example.yaml helm/n8n/values.yaml
+          DOMAIN="${{ secrets.N8N_DOMAIN }}"
+          sed -i "s/n8n.example.com/$DOMAIN/g" helm/n8n/values.yaml
+          sed -i "s/n8n.example.com/$DOMAIN/g" k8s/ingress/traefik.yaml
+          sed -i "s/admin@example.com/${{ secrets.LETSENCRYPT_EMAIL }}/g" k8s/cert-manager/cluster-issuer.yaml
+      
+      - name: Create namespace if not exists
+        run: |
+          kubectl get namespace n8n || kubectl create namespace n8n
+      
+      - name: Create secrets
+        run: |
+          chmod +x ./scripts/create-secrets.sh
+          export DOMAIN="${{ secrets.N8N_DOMAIN }}"
+          ./scripts/create-secrets.sh
+      
+      - name: Deploy PostgreSQL
+        run: |
+          helm upgrade --install postgresql bitnami/postgresql \
+            --namespace n8n \
+            -f helm/postgresql/values.yaml
+      
+      - name: Deploy Redis
+        run: |
+          helm upgrade --install redis bitnami/redis \
+            --namespace n8n \
+            -f helm/redis/values.yaml
+      
+      - name: Wait for dependencies
+        run: |
+          kubectl wait --for=condition=ready pod/postgresql-0 --namespace n8n --timeout=300s
+          kubectl wait --for=condition=ready pod/redis-master-0 --namespace n8n --timeout=300s
+      
+      - name: Deploy n8n
+        run: |
+          helm upgrade --install n8n n8n/n8n \
+            --namespace n8n \
+            -f helm/n8n/values.yaml
+      
+      - name: Apply Traefik IngressRoute
+        run: |
+          kubectl apply -f k8s/ingress/traefik.yaml -n n8n
+      
+      - name: Wait for n8n to be ready
+        run: |
+          kubectl wait --for=condition=available deployment/n8n --namespace n8n --timeout=300s
+      
+      - name: Get n8n URL
+        run: |
+          echo "n8n is deployed at https://${{ secrets.N8N_DOMAIN }}"
+          echo "Check status with: kubectl get pods -n n8n"
