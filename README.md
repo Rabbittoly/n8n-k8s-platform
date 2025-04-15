@@ -30,7 +30,7 @@ A production-ready Kubernetes deployment for n8n workflow automation platform wi
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/yourusername/n8n-k8s-platform.git
+   git clone https://github.com/rabbittoly/n8n-k8s-platform.git
    cd n8n-k8s-platform
    ```
 2. Make the setup script executable and run it:
@@ -201,7 +201,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](https://claude.ai/chat/LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## 🔗 Links
 
