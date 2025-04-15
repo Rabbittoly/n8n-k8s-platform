@@ -1,71 +1,37 @@
-# Kubernetes
+# Kubernetes user-specific files
 .kube/
 kubeconfig
 
-# Helm
-.helm/
-charts/
-*.tgz
+# User's values files - we want to include template values in the repo
+# but exclude user-specific values
 /values.yaml
-!values.example.yaml
 
-# Secrets
+# Runtime and temporary files
+tmp/
+
+# Real secrets (example secrets should still be included)
 .env
-*.env
 *.key
-*.crt
-*.pem
-secrets/
-sensitive/
+secrets/*.env
 
-# Docker
-docker-compose.override.yml
-*.tar
-*.gz
-
-# Backups
+# Generated backups
 backups/
-*.sql
-*.sql.gz
-*.backup
-*.bak
 
-# n8n data
+# n8n data and logs that are created after deployment
 data/
-
-# Logs
 *.log
 logs/
 
-# Temp files
-*.tmp
-*.swp
-*.swo
-*~
-tmp/
-
-# Editors / OS
+# Editor and OS specific files
 .DS_Store
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
-# Node.js
+# Dependencies that should be installed, not committed
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Python
+venv/
 __pycache__/
 *.py[cod]
-*.so
-.Python
-env/
-venv/
-build/
-dist/
-*.egg-info/
-
-# Tests
-test-results/
-coverage/
