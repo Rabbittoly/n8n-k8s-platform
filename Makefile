@@ -173,3 +173,4 @@ check-scripts: ## Check shell scripts for common issues
 	@echo "Checking shell scripts..."
 	@find ./scripts -type f -name "*.sh" -exec shellcheck {} \;
 	@echo "Checking completed!"
+

@@ -40,7 +40,7 @@ This repository is designed to be used as a template:
 1. Clone your copy of the repository:
 
    ```bash
-   git clone https://github.com/yourusername/n8n-k8s-platform.git
+   git clone https://github.com/Rabbittoly/n8n-k8s-platform.git
    cd n8n-k8s-platform
    ```
 2. Run the interactive setup wizard:
@@ -294,7 +294,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](https://claude.ai/chat/LICENSE) file for details.
+This project is licensed under the MIT License
 
 ## 🔗 Links
 
