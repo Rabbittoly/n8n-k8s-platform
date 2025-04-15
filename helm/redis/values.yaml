@@ -1,0 +1,224 @@
+# Redis Helm Chart values.yaml
+# Optimized for small servers (2 CPU, 4GB RAM)
+
+# Global settings
+global:
+  # Set storageClass here if required
+  storageClass: ""
+  redis:
+    password: "" # Auto-generated if not provided
+
+# Common settings - optimized for small servers
+commonConfiguration: |-
+  # Enable AOF https://redis.io/topics/persistence#append-only-file
+  appendonly yes
+  # Disable RDB persistence
+  save ""
+  # Enable TCP keepalive
+  tcp-keepalive 60
+  # Max memory policy - conservative for small servers
+  maxmemory 512mb
+  maxmemory-policy allkeys-lru
+  # Set client output buffer limits
+  client-output-buffer-limit normal 0 0 0
+  client-output-buffer-limit replica 256mb 64mb 60
+  client-output-buffer-limit pubsub 32mb 8mb 60
+
+# Redis master configuration
+master:
+  # Number of Redis master replicas to deploy
+  count: 1
+  
+  # Redis command arguments
+  commandArgs: []
+  
+  # Pod annotation
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+  
+  # Pod disruption budget - disabled for small servers
+  pdb:
+    create: false
+  
+  # Container security context
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+  
+  # Pod security context
+  securityContext:
+    enabled: true
+    fsGroup: 1001
+    runAsUser: 1001
+  
+  # Resource configuration - optimized for small servers
+  resources:
+    limits:
+      cpu: 250m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Persistence configuration
+  persistence:
+    enabled: true
+    path: /data
+    subPath: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi  # Reduced size for small servers
+    labels: {}
+    annotations: {}
+    selector: {}
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 6379
+    annotations: {}
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    externalTrafficPolicy: Cluster
+  
+  # Liveness probe - adjusted for small servers
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 5
+  
+  # Readiness probe - adjusted for small servers
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 5
+  
+  # Startup probe - adjusted for small servers
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 22
+
+# Redis replicas configuration - disabled for small servers
+replica:
+  # Number of Redis replicas to deploy
+  replicaCount: 0  # Disabled for small servers
+  
+  # Resource configuration
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Sentinel configuration - disabled for small servers
+sentinel:
+  enabled: false
+
+# Cluster settings - disabled for small servers
+cluster:
+  enabled: false
+
+# Redis metrics (Prometheus exporter) - minimal configuration
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false  # Disabled by default for small servers
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Network policies
+networkPolicy:
+  enabled: true
+  ingressNSMatchLabels: {}
+  ingressNSPodMatchLabels: {}
+  allowExternal: false
+
+# Diagnostics mode
+diagnosticMode:
+  enabled: false
+  command:
+    - sleep
+  args:
+    - infinity
+
+# Redis TLS configuration - disabled for small servers
+tls:
+  enabled: false
+
+# Auth configuration
+auth:
+  enabled: true
+  sentinel: false
+  password: ""
+  existingSecret: ""
+  existingSecretPasswordKey: ""
+  usePasswordFiles: false
+
+# Image setup
+image:
+  registry: docker.io
+  repository: bitnami/redis
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  debug: false
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+  annotations: {}
+
+# Volume permissions
+volumePermissions:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnami/os-shell
+    tag: latest
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+  securityContext:
+    runAsUser: 0
+
+# System efficiency
+sysctl:
+  enabled: true
+  mountHostSys: false
+  command:
+    - /bin/sh
+    - -c
+    - |-
+      sysctl -w net.core.somaxconn=512
+      sysctl -w net.ipv4.tcp_keepalive_time=300
+      sysctl -w net.ipv4.tcp_keepalive_intvl=60
+      sysctl -w net.ipv4.tcp_keepalive_probes=10
+  image:
+    registry: docker.io
+    repository: bitnami/os-shell
+    tag: latest
+    pullPolicy: IfNotPresent
+    pullSecrets: []
+  securityContext:
+    runAsUser: 0
+    privileged: true

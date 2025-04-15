@@ -1,63 +1,50 @@
+
 # n8n Kubernetes Platform
 
-[![CI/CD](https://github.com/username/n8n-k8s-platform/actions/workflows/deploy.yml/badge.svg)](https://github.com/username/n8n-k8s-platform/actions/workflows/deploy.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A production-ready Kubernetes deployment for n8n workflow automation platform with PostgreSQL and Redis. This repository is designed as a template for deploying n8n in a production Kubernetes environment with high availability, scalability, and security.
+A production-ready Kubernetes deployment for n8n workflow automation platform with PostgreSQL and Redis. This repository is designed as a template that works even on small servers (2 CPU, 4GB RAM) with the option to scale up for larger deployments.
 
 ## 🌟 Features
 
+* **Works on Minimal Hardware** : Optimized for servers with just 2 CPU cores and 4GB RAM
+* **Automatic Dependencies** : Installs all requirements on Ubuntu Server 22.04 automatically
 * **Interactive Setup** : Simple wizard for configuring your deployment
-* **Complete Production Setup** : Fully configured n8n with PostgreSQL and Redis backends
-* **High Availability** : Multiple replicas, auto-scaling, and proper health checks
+* **Complete Solution** : Fully configured n8n with PostgreSQL and Redis backends
 * **Security** : TLS encryption, secure secrets management, proper RBAC
-* **Observability** : Prometheus metrics, Grafana dashboards, and structured logging
 * **Simplicity** : Deploy with a single command using Make
-* **GitOps Ready** : Properly structured for GitOps workflows with ArgoCD or Flux
-* **CI/CD** : Built-in GitHub Actions for validation and deployment
+* **GitOps Ready** : Properly structured for GitOps workflows
+* **Scalability** : Easily adjust resources as your needs grow
 
 ## 🚀 Getting Started
 
-### Use As Template
-
-This repository is designed to be used as a template:
-
-1. Click the "Use this template" button on GitHub or fork the repository
-2. Clone your copy of the repository to your local machine
-3. Run the interactive setup wizard to configure your deployment
-4. Deploy with a single command
-
 ### Prerequisites
 
-* Kubernetes cluster (v1.26+)
-* kubectl configured to access your cluster
-* Helm (v3.11+)
-* Make
-* Domain name pointing to your cluster's ingress
+* Ubuntu Server 22.04 (recommended)
+* At least 2 CPU cores and 4GB RAM
+* Basic knowledge of Linux command line
+* A domain name pointing to your server's IP address
 
-### Installation
+### Quick Install
 
-1. Clone your copy of the repository:
+1. Clone this repository:
 
    ```bash
-   git clone https://github.com/Rabbittoly/n8n-k8s-platform.git
+   git clone https://github.com/yourusername/n8n-k8s-platform.git
    cd n8n-k8s-platform
    ```
-2. Run the interactive setup wizard:
+2. Make the setup script executable and run it:
 
    ```bash
+   chmod +x setup.sh
    ./setup.sh
    ```
 
-   The wizard will guide you through configuring your deployment, including:
+   The wizard will:
 
-   * Domain name
-   * Database settings
-   * Resource limits
-   * TLS configuration
-   * Monitoring setup
-
-   All settings are saved and can be changed at any time by running `./setup.sh` again.
+   * Check and install required dependencies (kubectl, helm, K3s)
+   * Guide you through configuring your deployment
+   * Optimize settings for your server size
 3. Deploy with a single command:
 
    ```bash
@@ -67,43 +54,31 @@ This repository is designed to be used as a template:
 
 ## 📦 Architecture
 
-The platform consists of the following components:
-
 ```
-                                 ┌──────────────┐
-                                 │   Internet   │
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Kubernetes Cluster                          │
-│                                                                  │
-│   ┌───────────┐      ┌─────────────────────────────────────┐    │
-│   │  Traefik  │──────►  Ingress (n8n.example.com)          │    │
-│   └───────────┘      └────────────────┬────────────────────┘    │
-│                                       │                          │
-│                                       ▼                          │
-│   ┌───────────────────────────────────────────────────────┐     │
-│   │                    n8n Deployment                      │     │
-│   │                                                        │     │
-│   │   ┌──────────┐  ┌──────────┐  ┌──────────┐            │     │
-│   │   │   Pod 1  │  │   Pod 2  │  │   Pod N  │            │     │
-│   │   └──────────┘  └──────────┘  └──────────┘            │     │
-│   │         │              │             │                 │     │
-│   └─────────┼──────────────┼─────────────┼─────────────────┘     │
-│             │              │             │                       │
-│             ▼              ▼             ▼                       │
-│   ┌─────────────────┐    ┌─────────────────┐                     │
-│   │   PostgreSQL    │    │      Redis      │                     │
-│   │   (Stateful)    │    │   (Stateful)    │                     │
-│   └─────────────────┘    └─────────────────┘                     │
-│                                                                  │
-│   ┌─────────────────┐    ┌─────────────────┐                     │
-│   │   Prometheus    │    │     Grafana     │                     │
-│   │   (Monitoring)  │    │  (Dashboards)   │                     │
-│   └─────────────────┘    └─────────────────┘                     │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+                      ┌──────────────┐
+                      │   Internet   │
+                      └──────┬───────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────┐
+│                Kubernetes (K3s)                  │
+│                                                  │
+│   ┌───────────┐      ┌──────────────────┐        │
+│   │  Traefik  │──────►  Ingress Route   │        │
+│   └───────────┘      └─────────┬────────┘        │
+│                                │                  │
+│                                ▼                  │
+│   ┌────────────────────────────────────────┐     │
+│   │               n8n Pod                  │     │
+│   └───────────────┬──────────┬─────────────┘     │
+│                   │          │                    │
+│                   ▼          ▼                    │
+│   ┌───────────────────┐    ┌───────────────┐     │
+│   │   PostgreSQL      │    │     Redis     │     │
+│   │   (StatefulSet)   │    │ (StatefulSet) │     │
+│   └───────────────────┘    └───────────────┘     │
+│                                                  │
+└──────────────────────────────────────────────────┘
 ```
 
 ## 🛠️ Usage
@@ -113,11 +88,20 @@ The platform consists of the following components:
 This repository includes a Makefile with common operations:
 
 ```bash
+# Install dependencies
+make dependencies
+
 # Run the interactive setup wizard
 make setup
 
 # Deploy everything
 make deploy
+
+# Check status of deployment
+make status
+
+# View logs
+make logs
 
 # Update to the latest version
 make update
@@ -125,83 +109,60 @@ make update
 # Create a backup
 make backup
 
-# Show n8n logs
-make logs
+# Restore from backup
+make restore BACKUP_FILE=./backups/n8n-backup-20250414-120000.tar.gz
 
-# Get n8n status
-make status
-
-# Uninstall everything
+# Uninstall
 make uninstall
 ```
 
 Run `make help` to see all available commands.
 
-### Customization
+## ⚙️ Configuration Options
 
-The interactive setup wizard helps you configure most aspects of the deployment. If you need more advanced customization:
+The interactive setup wizard offers several pre-configured options:
 
-* Modify `helm/n8n/values.yaml` to customize n8n settings
-* Modify `helm/postgresql/values.yaml` to customize PostgreSQL settings
-* Modify `helm/redis/values.yaml` to customize Redis settings
-* Modify `k8s/ingress/traefik.yaml` to customize ingress settings
+### Server Size
 
-### Accessing n8n
+1. **Small (2 CPU, 4GB RAM)**
+   * Single n8n replica
+   * Minimal resource allocation
+   * No Redis replication
+   * Monitoring disabled by default
+2. **Medium (4 CPU, 8GB RAM)**
+   * 2 n8n replicas for high availability
+   * Moderate resource allocation
+   * Basic monitoring
+3. **Large (8+ CPU, 16+ GB RAM)**
+   * 3+ n8n replicas
+   * Redis replication
+   * Full monitoring stack
+   * Auto-scaling enabled
+4. **Custom**
+   * Manually configure all settings
 
-Once deployed, n8n will be available at your configured domain (e.g., https://n8n.example.com).
+### Component Options
 
-Default login credentials are:
+* **External Database** : Connect to an existing PostgreSQL database
+* **External Redis** : Connect to an existing Redis instance
+* **TLS** : Automatically configure Let's Encrypt certificates
+* **SMTP** : Configure email notifications
+* **Monitoring** : Install Prometheus and Grafana (optional)
 
-* Username: admin@example.com
-* Password: (Generated during setup and printed in console)
+## 🔍 Performance Considerations
 
-To get the password after deployment:
+For small servers (2 CPU, 4GB RAM):
 
-```bash
-kubectl get secret -n n8n n8n-secrets -o jsonpath='{.data.initialPassword}' | base64 -d
-```
+* Single n8n replica to conserve resources
+* Disabled monitoring to save memory
+* Reduced database connection limits
+* Conservative memory settings for PostgreSQL and Redis
+* No Redis replication
 
-## ⚙️ Configuration
+As your needs grow, you can easily reconfigure:
 
-All configuration is handled through the interactive setup wizard (`./setup.sh`). The wizard generates configuration files that are used by the deployment scripts.
-
-Your configuration is saved in `.config/platform.conf` and can be edited manually if needed.
-
-### Environment Variables
-
-All n8n environment variables can be configured through the setup wizard. The most important ones are:
-
-* `N8N_ENCRYPTION_KEY`: Encryption key for sensitive data
-* `WEBHOOK_URL`: URL for webhooks
-* `N8N_HOST`: Hostname for n8n
-* `N8N_PORT`: Port for n8n
-* `DB_TYPE`: Database type (postgresdb)
-* `DB_POSTGRESDB_*`: PostgreSQL connection settings
-* `N8N_REDIS_*`: Redis connection settings
-
-### Secrets Management
-
-Sensitive information is stored in Kubernetes Secrets:
-
-* `n8n-secrets`: Contains encryption key and webhook URL
-* `postgresql`: Contains PostgreSQL credentials
-* `redis`: Contains Redis credentials
-* `n8n-smtp-secrets`: Contains SMTP credentials (if configured)
-
-### Scaling
-
-n8n is configured with horizontal pod autoscaling (HPA) that will automatically scale based on CPU and memory usage. You can adjust the scaling parameters in the setup wizard.
-
-## 🔍 Monitoring
-
-This setup includes Prometheus for metrics collection and Grafana for visualization. You can enable monitoring during the setup process.
-
-Monitoring dashboards can be accessed at:
-
-* Prometheus: http://prometheus.monitoring.svc.cluster.local:9090 (cluster internal)
-* Grafana: http://grafana.monitoring.svc.cluster.local:3000 (cluster internal)
-
-You can expose these services externally by creating additional ingress resources.
+1. Run `./setup.sh` again and select a larger server profile
+2. Run `make deploy` to apply the new configuration
 
 ## 🛡️ Security
 
@@ -210,37 +171,19 @@ This deployment follows security best practices:
 * All sensitive data stored in Kubernetes Secrets
 * TLS encryption for all external traffic
 * Non-root containers with proper security contexts
-* Resource limits to prevent resource exhaustion attacks
 * Network policies to restrict traffic
-* Regular security updates through CI/CD
 
 ## 📚 Disaster Recovery
 
-### Backup Procedures
-
-Use the provided backup script to create backups:
+### Backup and Restore
 
 ```bash
+# Create a backup
 make backup
+
+# Restore from a backup
+make restore BACKUP_FILE=./backups/n8n-backup-20250414-120000.tar.gz
 ```
-
-This will create a backup of:
-
-* PostgreSQL database
-* n8n configuration
-* Kubernetes resources
-
-Backups are stored in the `./backups` directory.
-
-### Restoration Procedures
-
-To restore from a backup:
-
-1. Ensure the cluster is running
-2. Run the restore command with the backup file:
-   ```bash
-   make restore BACKUP_FILE=./backups/n8n-backup-20250414-120000.tar.gz
-   ```
 
 ## 📅 Maintenance
 
@@ -252,52 +195,17 @@ To update to the latest version:
 make update
 ```
 
-This will:
-
-1. Update all Helm repositories
-2. Upgrade n8n, PostgreSQL, and Redis to their latest versions
-3. Apply any configuration changes
-
-### Troubleshooting
-
-Common issues and their solutions:
-
-1. **Pods not starting** : Check events and logs
-
-```bash
-   kubectl describe pod -n n8n [pod-name]
-   kubectl logs -n n8n [pod-name]
-```
-
-1. **Database connection issues** : Verify PostgreSQL connectivity
-
-```bash
-   kubectl exec -it -n n8n [n8n-pod-name] -- sh -c "nc -zv postgresql 5432"
-```
-
-1. **Redis connection issues** : Verify Redis connectivity
-
-```bash
-   kubectl exec -it -n n8n [n8n-pod-name] -- sh -c "nc -zv redis-master 6379"
-```
-
-1. **Ingress not working** : Check Traefik logs and configuration
-
-```bash
-   kubectl logs -n traefik [traefik-pod-name]
-   kubectl get ingressroute -n n8n
-```
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License
+This project is licensed under the MIT License - see the [LICENSE](https://claude.ai/chat/LICENSE) file for details.
 
 ## 🔗 Links
 
 * [n8n Documentation](https://docs.n8n.io/)
 * [Kubernetes Documentation](https://kubernetes.io/docs/)
+* [K3s Documentation](https://docs.k3s.io/)
 * [Helm Documentation](https://helm.sh/docs/)

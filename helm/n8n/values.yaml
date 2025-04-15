@@ -1,16 +1,15 @@
-# n8n Helm Chart values.example.yaml
-# Optimized for small servers (2 CPU, 4GB RAM)
-# IMPORTANT: Copy this file to values.yaml and customize it before deployment
+# n8n Helm Chart values.yaml
+# Production-ready configuration for n8n deployment
 
 # n8n Configuration
 n8n:
   name: n8n
-  replicaCount: 1  # Single replica for small servers
+  replicaCount: 2  # For high availability
   
   # n8n image configuration
   image:
     repository: n8nio/n8n
-    tag: "1.0.0"  # Always use a specific version in production
+    tag: "latest"  # Always use a specific version in production
     pullPolicy: IfNotPresent
     
   # Security context settings
@@ -19,21 +18,21 @@ n8n:
     runAsGroup: 1000
     fsGroup: 1000
     
-  # Resource limits - optimized for small servers
+  # Resource limits
   resources:
     limits:
-      cpu: 500m
-      memory: 1024Mi
+      cpu: 1
+      memory: 2Gi
     requests:
-      cpu: 250m
-      memory: 512Mi
+      cpu: 500m
+      memory: 1Gi
   
   # Storage for n8n data
   persistence:
     enabled: true
     storageClass: ""  # Use default storageClass
     accessMode: ReadWriteOnce
-    size: 5Gi  # Reduced size for small servers
+    size: 10Gi
   
   # Service configuration
   service:
@@ -54,7 +53,7 @@ n8n:
           name: n8n-secrets
           key: webhookUrl
     - name: N8N_HOST
-      value: "n8n.example.com"  # CHANGE THIS: Set to your domain
+      value: "n8n.example.com"  # Change to your domain
     - name: N8N_PORT
       value: "5678"
     
@@ -99,13 +98,13 @@ n8n:
     - name: NODE_ENV
       value: "production"
     
-    # Metrics (can be disabled to save resources)
+    # Metrics
     - name: N8N_METRICS
       value: "true"
     
     # Timezone
     - name: GENERIC_TIMEZONE
-      value: "UTC"  # CHANGE THIS: Set to your timezone
+      value: "UTC"
     
     # Security settings
     - name: N8N_USER_MANAGEMENT_DISABLED
@@ -113,9 +112,7 @@ n8n:
     - name: N8N_DIAGNOSTICS_ENABLED
       value: "false"
     
-    # Performance optimizations for small servers
-    - name: N8N_DEFAULT_CONCURRENCY
-      value: "5"  # Reduced concurrency for small servers
+    # Better queue performance
     - name: EXECUTIONS_PROCESS
       value: "main"
     - name: EXECUTIONS_TIMEOUT
@@ -125,33 +122,35 @@ n8n:
     - name: TRIGGER_TIMEOUT_MAX
       value: "7200"
     
-    # Email settings (uncomment and configure if needed)
-    # - name: N8N_EMAIL_MODE
-    #   value: "smtp"
-    # - name: N8N_SMTP_HOST
-    #   value: "smtp.example.com"
-    # - name: N8N_SMTP_PORT
-    #   value: "587"
-    # - name: N8N_SMTP_USER
-    #   valueFrom:
-    #     secretKeyRef:
-    #       name: n8n-secrets
-    #       key: smtpUser
-    # - name: N8N_SMTP_PASS
-    #   valueFrom:
-    #     secretKeyRef:
-    #       name: n8n-secrets
-    #       key: smtpPass
-    # - name: N8N_SMTP_SENDER
-    #   value: "n8n@example.com"
+    # Initial admin account (optional)
+    - name: N8N_EMAIL_MODE
+      value: "smtp"
+    - name: N8N_SMTP_HOST
+      value: "smtp.example.com"
+    - name: N8N_SMTP_PORT
+      value: "587"
+    - name: N8N_SMTP_USER
+      valueFrom:
+        secretKeyRef:
+          name: n8n-secrets
+          key: smtpUser
+          optional: true
+    - name: N8N_SMTP_PASS
+      valueFrom:
+        secretKeyRef:
+          name: n8n-secrets
+          key: smtpPass
+          optional: true
+    - name: N8N_SMTP_SENDER
+      value: "n8n@example.com"
   
-  # Health checks - adjusted for small servers
+  # Health checks
   livenessProbe:
     httpGet:
       path: /healthz
       port: 5678
-    initialDelaySeconds: 90  # Increased for slower servers
-    periodSeconds: 20
+    initialDelaySeconds: 60
+    periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   
@@ -159,45 +158,63 @@ n8n:
     httpGet:
       path: /healthz
       port: 5678
-    initialDelaySeconds: 45  # Increased for slower servers
-    periodSeconds: 20
+    initialDelaySeconds: 30
+    periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   
-  # Pod disruption budget - not needed for single replica
+  # Pod disruption budget for high availability
   podDisruptionBudget:
-    enabled: false
+    enabled: true
+    minAvailable: 1
 
-# Ingress configuration (not used, we use Traefik IngressRoute instead)
+# Ingress configuration
 ingress:
-  enabled: false
+  enabled: false  # We use Traefik IngressRoute instead
   annotations:
     kubernetes.io/ingress.class: "traefik"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    - host: n8n.example.com  # CHANGE THIS: Set to your domain
+    - host: n8n.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
     - secretName: n8n-tls
       hosts:
-        - n8n.example.com  # CHANGE THIS: Set to your domain
+        - n8n.example.com
 
-# Auto scaling configuration - disabled for small servers
+# Auto scaling configuration
 autoscaling:
-  enabled: false
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
 
-# Affinity settings - simplified for small servers
-affinity: {}
+# Affinity settings for pod distribution
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - n8n
+        topologyKey: kubernetes.io/hostname
 
-# Prometheus Metrics - minimal configuration
+# Prometheus Metrics
 metrics:
   enabled: true
   serviceMonitor:
-    enabled: false  # Disabled by default for small servers
+    enabled: true
+    additionalLabels:
+      release: prometheus
 
-# Network policies - basic configuration
+# Network policies
 networkPolicy:
   enabled: true
   ingressRules:

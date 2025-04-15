@@ -23,23 +23,24 @@ help: ## Show this help message
 	@echo '  make [target]'
 	@echo ''
 	@echo 'Initial Setup:'
-	@echo '  setup                Run the interactive setup wizard'
-	@echo '  check-config         Check if configuration exists'
+	@echo '  dependencies        Install required dependencies'
+	@echo '  setup               Run the interactive setup wizard'
+	@echo '  check-config        Check if configuration exists'
 	@echo ''
 	@echo 'Deployment:'
-	@echo '  deploy               Deploy the complete n8n platform'
-	@echo '  uninstall            Uninstall n8n, PostgreSQL, and Redis'
+	@echo '  deploy              Deploy the complete n8n platform'
+	@echo '  uninstall           Uninstall n8n, PostgreSQL, and Redis'
 	@echo ''
 	@echo 'Operations:'
-	@echo '  status               Show status of the n8n deployment'
-	@echo '  logs                 Show logs from n8n pods'
-	@echo '  update               Update all components to the latest versions'
-	@echo '  backup               Create a backup of n8n data'
+	@echo '  status              Show status of the n8n deployment'
+	@echo '  logs                Show logs from n8n pods'
+	@echo '  update              Update all components to the latest versions'
+	@echo '  backup              Create a backup of n8n data'
 	@echo '  restore BACKUP_FILE=path/to/backup  Restore from a backup'
 	@echo ''
 	@echo 'Validation:'
-	@echo '  lint                 Run Helm lint on all charts'
-	@echo '  dry-run              Run a dry-run installation of all components'
+	@echo '  lint                Run Helm lint on all charts'
+	@echo '  dry-run             Run a dry-run installation of all components'
 	@echo ''
 	@echo 'For more information, see the README.md file.'
 
@@ -55,18 +56,30 @@ check-config: ## Check if configuration exists
 
 .PHONY: setup
 setup: ## Run the interactive setup wizard
+	@chmod +x setup.sh
 	@./setup.sh
+
+.PHONY: dependencies
+dependencies: ## Install required dependencies
+	@chmod +x scripts/install-dependencies.sh
+	@scripts/install-dependencies.sh
 
 .PHONY: check-dependencies
 check-dependencies: ## Check if required dependencies are installed
 	@echo "Checking dependencies..."
-	@which kubectl >/dev/null || (echo "kubectl not found. Please install kubectl" && exit 1)
-	@which helm >/dev/null || (echo "helm not found. Please install helm" && exit 1)
-	@which openssl >/dev/null || (echo "openssl not found. Please install openssl" && exit 1)
-	@echo "All dependencies are installed."
+	@if ! command -v kubectl >/dev/null; then \
+		echo "kubectl not found. Installing dependencies..."; \
+		make dependencies; \
+	elif ! command -v helm >/dev/null; then \
+		echo "helm not found. Installing dependencies..."; \
+		make dependencies; \
+	else \
+		echo "All dependencies are installed."; \
+	fi
 
 .PHONY: deploy
 deploy: check-config check-dependencies ## Deploy the complete n8n platform
+	@chmod +x scripts/install.sh
 	@./scripts/install.sh
 
 .PHONY: status
@@ -81,7 +94,7 @@ status: ## Show status of the n8n deployment
 	@kubectl get pods -n $(NAMESPACE) -l app.kubernetes.io/name=redis || echo "No Redis pods found"
 	@echo ""
 	@echo "Ingress:"
-	@kubectl get ingressroute -n $(NAMESPACE) || echo "No IngressRoute found"
+	@kubectl get ingressroute.traefik.containo.us -n $(NAMESPACE) 2>/dev/null || kubectl get ingress -n $(NAMESPACE) || echo "No Ingress found"
 
 .PHONY: logs
 logs: ## Show logs from n8n pods
@@ -89,12 +102,14 @@ logs: ## Show logs from n8n pods
 
 .PHONY: update
 update: check-config ## Update all components to the latest versions
+	@chmod +x scripts/update.sh
 	@./scripts/update.sh
 
 .PHONY: backup
 backup: ## Create a backup of n8n data
 	@echo "Creating backup..."
 	@mkdir -p $(BACKUP_DIR)
+	@chmod +x scripts/backup.sh
 	@./scripts/backup.sh $(BACKUP_DIR)
 	@echo "Backup completed!"
 
@@ -105,6 +120,7 @@ restore: ## Restore from a backup
 		exit 1; \
 	fi
 	@echo "Restoring from backup $(BACKUP_FILE)..."
+	@chmod +x scripts/restore.sh
 	@./scripts/restore.sh $(BACKUP_FILE)
 	@echo "Restore completed!"
 
@@ -112,13 +128,14 @@ restore: ## Restore from a backup
 uninstall: ## Uninstall n8n, PostgreSQL, and Redis
 	@echo "Creating final backup before uninstall..."
 	@mkdir -p $(BACKUP_DIR)
-	@./scripts/backup.sh $(BACKUP_DIR)/pre-uninstall-$(shell date +%Y%m%d-%H%M%S)
+	@chmod +x scripts/backup.sh
+	@./scripts/backup.sh $(BACKUP_DIR)/pre-uninstall-$(shell date +%Y%m%d-%H%M%S) || true
 	@echo "Uninstalling n8n..."
-	@helm uninstall $(RELEASE_NAME) --namespace $(NAMESPACE) || true
+	@helm uninstall $(RELEASE_NAME) --namespace $(NAMESPACE) 2>/dev/null || true
 	@echo "Uninstalling Redis..."
-	@helm uninstall $(REDIS_RELEASE) --namespace $(NAMESPACE) || true
+	@helm uninstall $(REDIS_RELEASE) --namespace $(NAMESPACE) 2>/dev/null || true
 	@echo "Uninstalling PostgreSQL..."
-	@helm uninstall $(POSTGRES_RELEASE) --namespace $(NAMESPACE) || true
+	@helm uninstall $(POSTGRES_RELEASE) --namespace $(NAMESPACE) 2>/dev/null || true
 	@echo "Uninstallation completed."
 	@echo "Note: PersistentVolumeClaims and Secrets are not deleted automatically."
 	@echo "To completely remove all data, run:"
@@ -128,8 +145,8 @@ uninstall: ## Uninstall n8n, PostgreSQL, and Redis
 .PHONY: lint
 lint: check-dependencies ## Run Helm lint on all charts
 	@echo "Linting Helm charts..."
-	@helm repo add bitnami https://charts.bitnami.com/bitnami || true
-	@helm repo add n8n https://n8n-io.github.io/n8n-helm || true
+	@helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
+	@helm repo add n8n https://n8n-io.github.io/n8n-helm 2>/dev/null || true
 	@helm repo update
 	@echo "Linting PostgreSQL values..."
 	@helm lint --values helm/postgresql/values.yaml bitnami/postgresql
@@ -147,8 +164,8 @@ lint: check-dependencies ## Run Helm lint on all charts
 .PHONY: dry-run
 dry-run: check-dependencies ## Run a dry-run installation of all components
 	@echo "Running dry-run installation..."
-	@helm repo add bitnami https://charts.bitnami.com/bitnami || true
-	@helm repo add n8n https://n8n-io.github.io/n8n-helm || true
+	@helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
+	@helm repo add n8n https://n8n-io.github.io/n8n-helm 2>/dev/null || true
 	@helm repo update
 	@echo "Dry-run PostgreSQL installation..."
 	@helm upgrade --install --dry-run $(POSTGRES_RELEASE) bitnami/postgresql --namespace $(NAMESPACE) -f helm/postgresql/values.yaml
@@ -160,17 +177,3 @@ dry-run: check-dependencies ## Run a dry-run installation of all components
 	@echo "Dry-run n8n installation..."
 	@helm upgrade --install --dry-run $(RELEASE_NAME) n8n/n8n --namespace $(NAMESPACE) -f helm/n8n/values.yaml
 	@echo "Dry-run completed!"
-
-# Development commands
-.PHONY: format-scripts
-format-scripts: ## Format shell scripts
-	@echo "Formatting shell scripts..."
-	@find ./scripts -type f -name "*.sh" -exec shfmt -i 2 -w {} \;
-	@echo "Formatting completed!"
-
-.PHONY: check-scripts
-check-scripts: ## Check shell scripts for common issues
-	@echo "Checking shell scripts..."
-	@find ./scripts -type f -name "*.sh" -exec shellcheck {} \;
-	@echo "Checking completed!"
-

@@ -1,0 +1,188 @@
+# PostgreSQL Helm Chart values.yaml
+# Optimized for small servers (2 CPU, 4GB RAM)
+
+global:
+  # Set storageClass here if required
+  storageClass: ""
+  
+  # PostgreSQL credentials
+  postgresql:
+    auth:
+      username: n8n
+      database: n8n
+      # Password will be auto-generated and stored in a Secret
+      existingSecret: ""
+
+# Primary PostgreSQL configuration
+primary:
+  # Pod-specific configuration
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
+
+  # Security context
+  securityContext:
+    enabled: true
+    fsGroup: 1001
+    runAsUser: 1001
+
+  # Container security context
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+
+  # Pod labels
+  podLabels:
+    app.kubernetes.io/component: primary
+
+  # PostgreSQL configuration - optimized for small servers
+  configuration: |-
+    # Memory Configuration
+    shared_buffers = 128MB
+    effective_cache_size = 512MB
+    work_mem = 8MB
+    maintenance_work_mem = 32MB
+    
+    # Checkpoint Configuration
+    checkpoint_timeout = 15min
+    checkpoint_completion_target = 0.9
+    
+    # WAL Configuration
+    wal_buffers = 8MB
+    
+    # Connection Settings
+    max_connections = 50
+    
+    # Logging
+    log_destination = 'csvlog'
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 10MB
+    log_min_duration_statement = 1000
+    
+    # Performance settings
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    
+    # Autovacuum settings
+    autovacuum = on
+    autovacuum_max_workers = 2
+    autovacuum_naptime = 1min
+    autovacuum_vacuum_threshold = 50
+    autovacuum_analyze_threshold = 50
+    
+    # Planner settings
+    default_statistics_target = 100
+
+  # Resource configuration - optimized for small servers
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+  # Persistence configuration
+  persistence:
+    enabled: true
+    mountPath: /bitnami/postgresql
+    size: 10Gi  # Reduced size for small servers
+    # Optional security context
+    existingClaim: ""
+    subPath: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    annotations: {}
+    selector: {}
+
+  # Pod Disruption Budget configuration - disabled for small servers
+  pdb:
+    create: false
+
+  # Update strategy
+  updateStrategy:
+    type: RollingUpdate
+
+  # Network policy configuration
+  networkPolicy:
+    enabled: true
+    # Allow traffic from n8n pods
+    allowExternal: false
+    ingressRules:
+      primaryAccessOnlyFrom:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: n8n
+      standbyAccessOnlyFrom:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: postgresql
+            role: standby
+
+  # Liveness probe configuration - adjusted for small servers
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+
+  # Readiness probe configuration - adjusted for small servers
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+
+  # Startup probe configuration - adjusted for small servers
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 12
+    successThreshold: 1
+
+# PostgreSQL metrics (Prometheus) - minimal for small servers
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false  # Disabled by default for small servers
+  image:
+    registry: docker.io
+    repository: bitnami/postgres-exporter
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Persistence of data across restarts
+volumePermissions:
+  enabled: true
+  securityContext:
+    runAsUser: 0
+
+# Init container configuration
+initdbScripts: {}
+  # init.sql: |
+  #   CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    postgresql: 5432
+  nodePorts:
+    postgresql: ""

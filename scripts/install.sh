@@ -1,6 +1,8 @@
 #!/bin/bash
-# n8n Installation Script
-# This script installs the complete n8n platform with all its dependencies
+# n8n Platform Setup Script
+# Interactive setup wizard for configuring n8n deployment
+# Optimized for minimal servers (2 CPU, 4GB RAM)
+
 set -e
 
 # Color codes for better readability
@@ -10,190 +12,428 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Load configuration if available
-CONFIG_FILE="./.config/platform.conf"
-if [ -f "$CONFIG_FILE" ]; then
-  echo -e "${BLUE}Loading configuration from $CONFIG_FILE...${NC}"
-  source "$CONFIG_FILE"
-else
-  echo -e "${YELLOW}Configuration file not found. Running setup wizard...${NC}"
-  ./setup.sh
-  source "$CONFIG_FILE"
-fi
-
-# Set defaults for variables that might not be in the config
-NAMESPACE=${NAMESPACE:-"n8n"}
-DOMAIN=${DOMAIN:-"n8n.example.com"}
-EMAIL=${EMAIL:-"admin@example.com"}
-INSTALL_MONITORING=${INSTALL_MONITORING:-"true"}
-
 # Print header
-echo -e "${BLUE}=========================================${NC}"
-echo -e "${BLUE}n8n Kubernetes Platform Installation${NC}"
-echo -e "${BLUE}=========================================${NC}"
+echo -e "${BLUE}================================================${NC}"
+echo -e "${BLUE}   n8n Kubernetes Platform - Setup Wizard       ${NC}"
+echo -e "${BLUE}================================================${NC}"
+echo
+echo -e "This wizard will help you configure your n8n platform deployment."
+echo -e "The settings will be saved and can be changed later if needed."
 echo
 
-# Check for required tools
-echo -e "${YELLOW}Checking dependencies...${NC}"
-command -v kubectl >/dev/null 2>&1 || { echo -e "${RED}kubectl is required but not installed. Aborting.${NC}" >&2; exit 1; }
-command -v helm >/dev/null 2>&1 || { echo -e "${RED}helm is required but not installed. Aborting.${NC}" >&2; exit 1; }
-command -v openssl >/dev/null 2>&1 || { echo -e "${RED}openssl is required but not installed. Aborting.${NC}" >&2; exit 1; }
-echo -e "${GREEN}All dependencies are installed.${NC}"
-echo
-
-# Create namespace if it doesn't exist
-echo -e "${YELLOW}Creating namespace $NAMESPACE if it doesn't exist...${NC}"
-kubectl get namespace $NAMESPACE >/dev/null 2>&1 || kubectl create namespace $NAMESPACE
-echo -e "${GREEN}Namespace ready.${NC}"
-echo
-
-# Add Helm repositories
-echo -e "${YELLOW}Adding Helm repositories...${NC}"
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo add n8n https://n8n-io.github.io/n8n-helm
-helm repo add traefik https://helm.traefik.io/traefik
-helm repo add jetstack https://charts.jetstack.io
-if [ "$INSTALL_MONITORING" = "true" ]; then
-  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+# Check dependencies first
+if ! command -v kubectl &> /dev/null || ! command -v helm &> /dev/null; then
+    echo -e "${YELLOW}Required dependencies (kubectl and/or helm) are not installed.${NC}"
+    echo -e "${YELLOW}Would you like to install them now?${NC}"
+    read -p "Install dependencies? [Y/n]: " -n 1 -r install_deps
+    echo
+    
+    if [[ $install_deps =~ ^[Yy]$ ]] || [[ -z $install_deps ]]; then
+        echo -e "${YELLOW}Installing dependencies...${NC}"
+        chmod +x scripts/install-dependencies.sh
+        ./scripts/install-dependencies.sh
+    else
+        echo -e "${RED}Dependencies are required to proceed. Please install them manually.${NC}"
+        echo -e "${YELLOW}Run: ./scripts/install-dependencies.sh${NC}"
+        exit 1
+    fi
 fi
-helm repo update
-echo -e "${GREEN}Helm repositories added.${NC}"
-echo
 
-# Create secrets
-echo -e "${YELLOW}Creating secrets...${NC}"
-# Export variables for create-secrets.sh
-export DOMAIN NAMESPACE
-if [ -n "$PG_USERNAME" ]; then export PG_USERNAME; fi
-if [ -n "$PG_PASSWORD" ]; then export PG_PASSWORD; fi
-if [ -n "$REDIS_PASSWORD" ]; then export REDIS_PASSWORD; fi
+# Create config directory if it doesn't exist
+CONFIG_DIR="./.config"
+mkdir -p "$CONFIG_DIR"
+CONFIG_FILE="$CONFIG_DIR/platform.conf"
+
+# Function to prompt for a value with a default
+prompt_with_default() {
+  local prompt_text="$1"
+  local default_val="$2"
+  local var_name="$3"
+  local current_val="${!var_name}"
+  
+  # If there's a current value, use it as default
+  if [ -n "$current_val" ]; then
+    default_val="$current_val"
+  fi
+  
+  # Show prompt with default
+  if [ -n "$default_val" ]; then
+    read -p "$prompt_text [$default_val]: " input
+    if [ -z "$input" ]; then
+      input="$default_val"
+    fi
+  else
+    read -p "$prompt_text: " input
+  fi
+  
+  # Set the value in the calling environment
+  eval "$var_name=\"$input\""
+}
+
+# Function to prompt for a yes/no value
+prompt_yes_no() {
+  local prompt_text="$1"
+  local default_val="$2" # Should be "y" or "n"
+  local var_name="$3"
+  local current_val="${!var_name}"
+  
+  # If there's a current value, use it as default
+  if [ -n "$current_val" ]; then
+    if [ "$current_val" = "true" ]; then
+      default_val="y"
+    else
+      default_val="n"
+    fi
+  fi
+  
+  while true; do
+    # Show prompt with default
+    if [ "$default_val" = "y" ]; then
+      read -p "$prompt_text [Y/n]: " input
+      if [ -z "$input" ]; then
+        input="y"
+      fi
+    else
+      read -p "$prompt_text [y/N]: " input
+      if [ -z "$input" ]; then
+        input="n"
+      fi
+    fi
+    
+    case $input in
+      [Yy]* ) eval "$var_name=\"true\""; break;;
+      [Nn]* ) eval "$var_name=\"false\""; break;;
+      * ) echo "Please answer yes (y) or no (n).";;
+    esac
+  done
+}
+
+# Load existing configuration if available
+if [ -f "$CONFIG_FILE" ]; then
+  echo -e "${YELLOW}Loading existing configuration...${NC}"
+  source "$CONFIG_FILE"
+  echo -e "${GREEN}Configuration loaded. You can update values or press Enter to keep current ones.${NC}"
+  echo
+fi
+
+echo -e "${BLUE}=== Basic Configuration ===${NC}"
+
+# Domain configuration
+prompt_with_default "Domain for n8n" "n8n.example.com" "DOMAIN"
+prompt_with_default "Email address (for Let's Encrypt)" "admin@example.com" "EMAIL"
+
+# Environment selection
+echo
+echo "Select environment type:"
+echo "  1) Production"
+echo "  2) Staging"
+echo "  3) Development"
+read -p "Environment [1]: " ENV_CHOICE
+case $ENV_CHOICE in
+  2) ENVIRONMENT="staging";;
+  3) ENVIRONMENT="development";;
+  *) ENVIRONMENT="production";;
+esac
+
+echo
+echo -e "${BLUE}=== Cluster Configuration ===${NC}"
+
+# Namespace
+prompt_with_default "Kubernetes namespace" "n8n" "NAMESPACE"
+
+# Storage
+echo
+prompt_with_default "Storage class (leave empty for default)" "" "STORAGE_CLASS"
+
+# Server size selection
+echo
+echo "Select server size configuration:"
+echo "  1) Small (2 CPU, 4GB RAM)"
+echo "  2) Medium (4 CPU, 8GB RAM)"
+echo "  3) Large (8+ CPU, 16+ GB RAM)"
+echo "  4) Custom"
+read -p "Server size [1]: " SIZE_CHOICE
+
+case $SIZE_CHOICE in
+  2)
+    # Medium server configuration
+    N8N_REPLICAS="2"
+    CONFIGURE_RESOURCES="true"
+    N8N_CPU_LIMIT="1"
+    N8N_MEMORY_LIMIT="2048"
+    N8N_CPU_REQUEST="500m"
+    N8N_MEMORY_REQUEST="1024"
+    PG_CPU_LIMIT="1"
+    PG_MEMORY_LIMIT="2048"
+    PG_CPU_REQUEST="500m"
+    PG_MEMORY_REQUEST="1024"
+    REDIS_CPU_LIMIT="500m"
+    REDIS_MEMORY_LIMIT="1024"
+    REDIS_CPU_REQUEST="250m"
+    REDIS_MEMORY_REQUEST="512"
+    INSTALL_MONITORING="true"
+    ;;
+  3)
+    # Large server configuration
+    N8N_REPLICAS="3"
+    CONFIGURE_RESOURCES="true"
+    N8N_CPU_LIMIT="2"
+    N8N_MEMORY_LIMIT="4096"
+    N8N_CPU_REQUEST="1"
+    N8N_MEMORY_REQUEST="2048"
+    PG_CPU_LIMIT="2"
+    PG_MEMORY_LIMIT="4096"
+    PG_CPU_REQUEST="1"
+    PG_MEMORY_REQUEST="2048"
+    REDIS_CPU_LIMIT="1"
+    REDIS_MEMORY_LIMIT="2048"
+    REDIS_CPU_REQUEST="500m"
+    REDIS_MEMORY_REQUEST="1024"
+    INSTALL_MONITORING="true"
+    ;;
+  4)
+    # Custom configuration
+    echo
+    prompt_yes_no "Configure resource limits and requests?" "y" "CONFIGURE_RESOURCES"
+    
+    if [ "$CONFIGURE_RESOURCES" = "true" ]; then
+      echo
+      echo -e "${BLUE}=== Resource Configuration ===${NC}"
+      
+      # n8n resources
+      echo "n8n resources:"
+      prompt_with_default "  CPU limit (cores)" "500m" "N8N_CPU_LIMIT"
+      prompt_with_default "  Memory limit (Mi)" "1024" "N8N_MEMORY_LIMIT"
+      prompt_with_default "  CPU request (cores)" "250m" "N8N_CPU_REQUEST"
+      prompt_with_default "  Memory request (Mi)" "512" "N8N_MEMORY_REQUEST"
+      
+      # PostgreSQL resources
+      echo
+      echo "PostgreSQL resources:"
+      prompt_with_default "  CPU limit (cores)" "500m" "PG_CPU_LIMIT"
+      prompt_with_default "  Memory limit (Mi)" "1024" "PG_MEMORY_LIMIT"
+      prompt_with_default "  CPU request (cores)" "250m" "PG_CPU_REQUEST"
+      prompt_with_default "  Memory request (Mi)" "512" "PG_MEMORY_REQUEST"
+      
+      # Redis resources
+      echo
+      echo "Redis resources:"
+      prompt_with_default "  CPU limit (cores)" "250m" "REDIS_CPU_LIMIT"
+      prompt_with_default "  Memory limit (Mi)" "512" "REDIS_MEMORY_LIMIT"
+      prompt_with_default "  CPU request (cores)" "100m" "REDIS_CPU_REQUEST"
+      prompt_with_default "  Memory request (Mi)" "256" "REDIS_MEMORY_REQUEST"
+    fi
+    ;;
+  *)
+    # Small server configuration (default)
+    N8N_REPLICAS="1"
+    CONFIGURE_RESOURCES="true"
+    N8N_CPU_LIMIT="500m"
+    N8N_MEMORY_LIMIT="1024"
+    N8N_CPU_REQUEST="250m"
+    N8N_MEMORY_REQUEST="512"
+    PG_CPU_LIMIT="500m"
+    PG_MEMORY_LIMIT="1024"
+    PG_CPU_REQUEST="250m"
+    PG_MEMORY_REQUEST="512"
+    REDIS_CPU_LIMIT="250m"
+    REDIS_MEMORY_LIMIT="512"
+    REDIS_CPU_REQUEST="100m"
+    REDIS_MEMORY_REQUEST="256"
+    INSTALL_MONITORING="false"
+    ;;
+esac
+
+echo
+echo -e "${BLUE}=== Component Configuration ===${NC}"
+
+# Replicas
+if [ -z "$N8N_REPLICAS" ]; then
+  prompt_with_default "Number of n8n replicas" "1" "N8N_REPLICAS"
+fi
+
+# PostgreSQL and Redis configuration
+prompt_yes_no "Use external PostgreSQL database?" "n" "USE_EXTERNAL_PG"
+if [ "$USE_EXTERNAL_PG" = "true" ]; then
+  prompt_with_default "PostgreSQL host" "postgres.example.com" "PG_HOST"
+  prompt_with_default "PostgreSQL port" "5432" "PG_PORT"
+  prompt_with_default "PostgreSQL database" "n8n" "PG_DATABASE"
+  prompt_with_default "PostgreSQL username" "n8n" "PG_USERNAME"
+  prompt_with_default "PostgreSQL password" "" "PG_PASSWORD"
+fi
+
+prompt_yes_no "Use external Redis instance?" "n" "USE_EXTERNAL_REDIS"
+if [ "$USE_EXTERNAL_REDIS" = "true" ]; then
+  prompt_with_default "Redis host" "redis.example.com" "REDIS_HOST"
+  prompt_with_default "Redis port" "6379" "REDIS_PORT"
+  prompt_with_default "Redis password" "" "REDIS_PASSWORD"
+fi
+
+echo
+echo -e "${BLUE}=== Additional Features ===${NC}"
+
+# TLS configuration
+prompt_yes_no "Configure TLS with Let's Encrypt?" "y" "USE_TLS"
+
+# Monitoring (default to off for small servers)
+if [ -z "$INSTALL_MONITORING" ]; then
+  prompt_yes_no "Install monitoring (Prometheus/Grafana)?" "n" "INSTALL_MONITORING"
+fi
+
+# SMTP configuration
+prompt_yes_no "Configure SMTP for email notifications?" "n" "CONFIGURE_SMTP"
 if [ "$CONFIGURE_SMTP" = "true" ]; then
-  export SMTP_USER="$SMTP_USER"
-  export SMTP_PASSWORD="$SMTP_PASSWORD"
+  prompt_with_default "SMTP host" "smtp.example.com" "SMTP_HOST"
+  prompt_with_default "SMTP port" "587" "SMTP_PORT"
+  prompt_with_default "SMTP username" "user@example.com" "SMTP_USER"
+  prompt_with_default "SMTP password" "" "SMTP_PASSWORD"
+  prompt_with_default "SMTP sender email" "n8n@example.com" "SMTP_SENDER"
 fi
 
-./scripts/create-secrets.sh
-echo -e "${GREEN}Secrets created.${NC}"
+# Save the configuration
+echo
+echo -e "${YELLOW}Saving configuration...${NC}"
+
+cat > "$CONFIG_FILE" <<EOL
+# n8n Platform Configuration
+# Generated on $(date)
+
+# Basic Configuration
+DOMAIN="$DOMAIN"
+EMAIL="$EMAIL"
+ENVIRONMENT="$ENVIRONMENT"
+NAMESPACE="$NAMESPACE"
+STORAGE_CLASS="$STORAGE_CLASS"
+
+# Resource Configuration
+CONFIGURE_RESOURCES="$CONFIGURE_RESOURCES"
+N8N_CPU_LIMIT="$N8N_CPU_LIMIT"
+N8N_MEMORY_LIMIT="$N8N_MEMORY_LIMIT"
+N8N_CPU_REQUEST="$N8N_CPU_REQUEST"
+N8N_MEMORY_REQUEST="$N8N_MEMORY_REQUEST"
+PG_CPU_LIMIT="$PG_CPU_LIMIT"
+PG_MEMORY_LIMIT="$PG_MEMORY_LIMIT"
+PG_CPU_REQUEST="$PG_CPU_REQUEST"
+PG_MEMORY_REQUEST="$PG_MEMORY_REQUEST"
+REDIS_CPU_LIMIT="$REDIS_CPU_LIMIT"
+REDIS_MEMORY_LIMIT="$REDIS_MEMORY_LIMIT"
+REDIS_CPU_REQUEST="$REDIS_CPU_REQUEST"
+REDIS_MEMORY_REQUEST="$REDIS_MEMORY_REQUEST"
+
+# Component Configuration
+N8N_REPLICAS="$N8N_REPLICAS"
+USE_EXTERNAL_PG="$USE_EXTERNAL_PG"
+PG_HOST="$PG_HOST"
+PG_PORT="$PG_PORT"
+PG_DATABASE="$PG_DATABASE"
+PG_USERNAME="$PG_USERNAME"
+PG_PASSWORD="$PG_PASSWORD"
+USE_EXTERNAL_REDIS="$USE_EXTERNAL_REDIS"
+REDIS_HOST="$REDIS_HOST"
+REDIS_PORT="$REDIS_PORT"
+REDIS_PASSWORD="$REDIS_PASSWORD"
+
+# Additional Features
+USE_TLS="$USE_TLS"
+INSTALL_MONITORING="$INSTALL_MONITORING"
+CONFIGURE_SMTP="$CONFIGURE_SMTP"
+SMTP_HOST="$SMTP_HOST"
+SMTP_PORT="$SMTP_PORT"
+SMTP_USER="$SMTP_USER"
+SMTP_PASSWORD="$SMTP_PASSWORD"
+SMTP_SENDER="$SMTP_SENDER"
+EOL
+
+echo -e "${GREEN}Configuration saved to $CONFIG_FILE${NC}"
 echo
 
-# Install Traefik if not already installed
-echo -e "${YELLOW}Installing Traefik...${NC}"
-kubectl get namespace traefik >/dev/null 2>&1 || kubectl create namespace traefik
-helm upgrade --install traefik traefik/traefik --namespace traefik
-echo -e "${GREEN}Traefik installed.${NC}"
+# Make all scripts executable
+echo -e "${YELLOW}Making scripts executable...${NC}"
+chmod +x scripts/*.sh
+echo -e "${GREEN}Scripts are now executable${NC}"
 echo
 
-# Install cert-manager if not already installed and TLS is enabled
-if [ "$USE_TLS" = "true" ]; then
-  echo -e "${YELLOW}Installing cert-manager...${NC}"
-  kubectl get namespace cert-manager >/dev/null 2>&1 || kubectl create namespace cert-manager
-  helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --set installCRDs=true
-  echo -e "${YELLOW}Waiting for cert-manager pods to be ready...${NC}"
-  kubectl wait --for=condition=available deployment/cert-manager-webhook -n cert-manager --timeout=120s
-  echo -e "${GREEN}cert-manager installed.${NC}"
-  echo
+# Update configuration files based on settings
+echo -e "${YELLOW}Updating configuration files...${NC}"
 
-  # Create ClusterIssuer for Let's Encrypt
-  echo -e "${YELLOW}Creating Let's Encrypt ClusterIssuer...${NC}"
-  kubectl apply -f k8s/cert-manager/cluster-issuer.yaml
-  echo -e "${GREEN}ClusterIssuer created.${NC}"
-  echo
+# Update n8n values.yaml
+echo "Updating n8n values.yaml..."
+cp helm/n8n/values.example.yaml helm/n8n/values.yaml
+sed -i "s/n8n.example.com/$DOMAIN/g" helm/n8n/values.yaml
+sed -i "s/replicaCount: 2/replicaCount: $N8N_REPLICAS/g" helm/n8n/values.yaml
+
+# Update storage class if specified
+if [ -n "$STORAGE_CLASS" ]; then
+  sed -i "s/storageClass: \"\"/storageClass: \"$STORAGE_CLASS\"/g" helm/n8n/values.yaml
+  sed -i "s/storageClass: \"\"/storageClass: \"$STORAGE_CLASS\"/g" helm/postgresql/values.yaml
+  sed -i "s/storageClass: \"\"/storageClass: \"$STORAGE_CLASS\"/g" helm/redis/values.yaml
 fi
 
-# Install PostgreSQL if not using external
-if [ "$USE_EXTERNAL_PG" != "true" ]; then
-  echo -e "${YELLOW}Installing PostgreSQL...${NC}"
-  helm upgrade --install postgresql bitnami/postgresql \
-    --namespace $NAMESPACE \
-    -f helm/postgresql/values.yaml
-  echo -e "${GREEN}PostgreSQL installation in progress. This may take a few minutes.${NC}"
-  echo
-fi
-
-# Install Redis if not using external
-if [ "$USE_EXTERNAL_REDIS" != "true" ]; then
-  echo -e "${YELLOW}Installing Redis...${NC}"
-  helm upgrade --install redis bitnami/redis \
-    --namespace $NAMESPACE \
-    -f helm/redis/values.yaml
-  echo -e "${GREEN}Redis installation in progress. This may take a few minutes.${NC}"
-  echo
-fi
-
-# Wait for PostgreSQL and Redis to be ready
-if [ "$USE_EXTERNAL_PG" != "true" ]; then
-  echo -e "${YELLOW}Waiting for PostgreSQL to be ready...${NC}"
-  kubectl wait --for=condition=ready pod/postgresql-0 --namespace $NAMESPACE --timeout=300s
-  echo -e "${GREEN}PostgreSQL is ready.${NC}"
-fi
-
-if [ "$USE_EXTERNAL_REDIS" != "true" ]; then
-  echo -e "${YELLOW}Waiting for Redis to be ready...${NC}"
-  kubectl wait --for=condition=ready pod/redis-master-0 --namespace $NAMESPACE --timeout=300s
-  echo -e "${GREEN}Redis is ready.${NC}"
-fi
-echo
-
-# Install n8n
-echo -e "${YELLOW}Installing n8n...${NC}"
-helm upgrade --install n8n n8n/n8n \
-  --namespace $NAMESPACE \
-  -f helm/n8n/values.yaml
-echo -e "${GREEN}n8n installation in progress...${NC}"
-echo
-
-# Apply Traefik IngressRoute
-echo -e "${YELLOW}Configuring Traefik IngressRoute...${NC}"
-kubectl apply -f k8s/ingress/traefik.yaml -n $NAMESPACE
-echo -e "${GREEN}IngressRoute configured.${NC}"
-echo
-
-# Install monitoring if enabled
-if [ "$INSTALL_MONITORING" = "true" ]; then
-  echo -e "${YELLOW}Installing monitoring (Prometheus/Grafana)...${NC}"
-  kubectl get namespace monitoring >/dev/null 2>&1 || kubectl create namespace monitoring
+# Update resource settings if enabled
+if [ "$CONFIGURE_RESOURCES" = "true" ]; then
+  # Update n8n resources
+  sed -i "s/cpu: 1/cpu: $N8N_CPU_LIMIT/g" helm/n8n/values.yaml
+  sed -i "s/memory: 2Gi/memory: ${N8N_MEMORY_LIMIT}Mi/g" helm/n8n/values.yaml
+  sed -i "s/cpu: 500m/cpu: $N8N_CPU_REQUEST/g" helm/n8n/values.yaml
+  sed -i "s/memory: 1Gi/memory: ${N8N_MEMORY_REQUEST}Mi/g" helm/n8n/values.yaml
   
-  # Install Prometheus and Grafana
-  helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-    --namespace monitoring \
-    --set grafana.adminPassword=admin \
-    --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
-    --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false
+  # Update PostgreSQL resources
+  sed -i "s/cpu: 1/cpu: $PG_CPU_LIMIT/g" helm/postgresql/values.yaml
+  sed -i "s/memory: 2Gi/memory: ${PG_MEMORY_LIMIT}Mi/g" helm/postgresql/values.yaml
+  sed -i "s/cpu: 500m/cpu: $PG_CPU_REQUEST/g" helm/postgresql/values.yaml
+  sed -i "s/memory: 1Gi/memory: ${PG_MEMORY_REQUEST}Mi/g" helm/postgresql/values.yaml
   
-  # Apply n8n Grafana dashboard
-  kubectl apply -f k8s/monitoring/grafana.yaml -n monitoring
-  
-  # Apply n8n service monitor
-  kubectl apply -f k8s/monitoring/prometheus.yaml -n monitoring
-  
-  echo -e "${GREEN}Monitoring installed.${NC}"
-  echo
+  # Update Redis resources
+  sed -i "s/cpu: 1000m/cpu: $REDIS_CPU_LIMIT/g" helm/redis/values.yaml
+  sed -i "s/memory: 1Gi/memory: ${REDIS_MEMORY_LIMIT}Mi/g" helm/redis/values.yaml
+  sed -i "s/cpu: 500m/cpu: $REDIS_CPU_REQUEST/g" helm/redis/values.yaml
+  sed -i "s/memory: 512Mi/memory: ${REDIS_MEMORY_REQUEST}Mi/g" helm/redis/values.yaml
 fi
 
-# Finish installation
-echo -e "${BLUE}=========================================${NC}"
-echo -e "${GREEN}Installation completed! 🎉${NC}"
-echo -e "${BLUE}=========================================${NC}"
-echo
-echo -e "n8n should be available soon at: ${YELLOW}https://$DOMAIN${NC}"
-echo
-echo -e "To get the initial admin password (if configured):"
-echo -e "  ${YELLOW}kubectl get secret -n $NAMESPACE n8n-secrets -o jsonpath='{.data.initialPassword}' | base64 -d${NC}"
-echo
-echo -e "To check the status of the deployment:"
-echo -e "  ${YELLOW}kubectl get pods -n $NAMESPACE${NC}"
-echo
-echo -e "To view n8n logs:"
-echo -e "  ${YELLOW}kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=n8n --tail=100 -f${NC}"
-echo
-
-if [ "$INSTALL_MONITORING" = "true" ]; then
-  echo -e "Monitoring is available at:"
-  echo -e "  Prometheus: ${YELLOW}http://monitoring-prometheus.monitoring.svc.cluster.local:9090${NC}"
-  echo -e "  Grafana:    ${YELLOW}http://monitoring-grafana.monitoring.svc.cluster.local:3000${NC}"
-  echo -e "  Grafana default credentials: admin / admin"
-  echo -e "  (expose these services externally by creating additional ingress resources)"
-  echo
+# Update SMTP settings if enabled
+if [ "$CONFIGURE_SMTP" = "true" ]; then
+  # Uncomment SMTP settings in values.yaml
+  sed -i 's/# - name: N8N_EMAIL_MODE/- name: N8N_EMAIL_MODE/g' helm/n8n/values.yaml
+  sed -i 's/#   value: "smtp"/  value: "smtp"/g' helm/n8n/values.yaml
+  sed -i 's/# - name: N8N_SMTP_HOST/- name: N8N_SMTP_HOST/g' helm/n8n/values.yaml
+  sed -i "s/#   value: \"smtp.example.com\"/  value: \"$SMTP_HOST\"/g" helm/n8n/values.yaml
+  sed -i 's/# - name: N8N_SMTP_PORT/- name: N8N_SMTP_PORT/g' helm/n8n/values.yaml
+  sed -i "s/#   value: \"587\"/  value: \"$SMTP_PORT\"/g" helm/n8n/values.yaml
+  sed -i 's/# - name: N8N_SMTP_USER/- name: N8N_SMTP_USER/g' helm/n8n/values.yaml
+  sed -i 's/# - name: N8N_SMTP_PASS/- name: N8N_SMTP_PASS/g' helm/n8n/values.yaml
+  sed -i 's/# - name: N8N_SMTP_SENDER/- name: N8N_SMTP_SENDER/g' helm/n8n/values.yaml
+  sed -i "s/#   value: \"n8n@example.com\"/  value: \"$SMTP_SENDER\"/g" helm/n8n/values.yaml
 fi
 
-echo -e "${GREEN}Done! 🚀${NC}"
+# Update ingress configuration
+echo "Updating ingress configuration..."
+sed -i "s/n8n.example.com/$DOMAIN/g" k8s/ingress/traefik.yaml
+
+# Update cert-manager configuration
+echo "Updating cert-manager configuration..."
+sed -i "s/admin@example.com/$EMAIL/g" k8s/cert-manager/cluster-issuer.yaml
+
+echo -e "${GREEN}Configuration files updated successfully!${NC}"
+echo
+
+# Output summary
+echo -e "${BLUE}================================================${NC}"
+echo -e "${BLUE}   Setup Complete - Deployment Summary          ${NC}"
+echo -e "${BLUE}================================================${NC}"
+echo
+echo -e "Your n8n platform has been configured with the following settings:"
+echo -e "  Domain:           ${GREEN}$DOMAIN${NC}"
+echo -e "  Environment:      ${GREEN}$ENVIRONMENT${NC}"
+echo -e "  Namespace:        ${GREEN}$NAMESPACE${NC}"
+echo -e "  n8n Replicas:     ${GREEN}$N8N_REPLICAS${NC}"
+echo
+echo -e "To deploy your platform, run:"
+echo -e "  ${YELLOW}make deploy${NC}"
+echo
+echo -e "To view all available commands:"
+echo -e "  ${YELLOW}make help${NC}"
+echo
+echo -e "Your configuration is saved and can be modified at any time by running:"
+echo -e "  ${YELLOW}./setup.sh${NC}"
+echo
+echo -e "${GREEN}Setup completed successfully!${NC}"

@@ -1,86 +1,71 @@
-# Kubernetes and Helm
+# Kubernetes
 .kube/
-.helm/
 kubeconfig
+
+# Helm
+.helm/
+charts/
+*.tgz
+/values.yaml
+!values.example.yaml
 
 # Secrets
 .env
 *.env
 *.key
+*.crt
 *.pem
 secrets/
 sensitive/
 
-# Backup files
+# Docker
+docker-compose.override.yml
+*.tar
+*.gz
+
+# Backups
 backups/
 *.sql
 *.sql.gz
 *.backup
 *.bak
 
-# Generated files
-values.yaml
-# Keep example files in version control
-!values.example.yaml
+# n8n data
+data/
 
 # Logs
 *.log
 logs/
 
-# Temporary files
+# Temp files
 *.tmp
 *.swp
 *.swo
 *~
+tmp/
+
+# Editors / OS
 .DS_Store
 .idea/
 .vscode/
-tmp/
 
-# Node.js dependencies (useful if you have client-side tools)
+# Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Python (if you have Python tools)
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
 .Python
 env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
 venv/
-ENV/
+build/
+dist/
+*.egg-info/
 
-# Test results
+# Tests
 test-results/
 coverage/
-
-# Operating System Files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Helm
-charts/
-charts.lock
-charts.lock.yaml
